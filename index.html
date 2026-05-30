@@ -68,10 +68,8 @@
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
         import { getFirestore, doc, onSnapshot, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+        import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js';
 
-        // =====================================================================
-        // 🔥 YOUR OFFICIAL FIREBASE CONFIGURATION 🔥
-        // =====================================================================
         const firebaseConfig = {
             apiKey: "AIzaSyBLKFYy0u3xbluV0qLKumOE_5lcpplH8T0",
             authDomain: "ntce-2985c.firebaseapp.com",
@@ -80,7 +78,6 @@
             messagingSenderId: "223968345178",
             appId: "1:223968345178:web:620eb312f606cc584cec63"
         };
-        // =====================================================================
 
         const siteAppId = typeof __app_id !== 'undefined' ? __app_id : "ntce-computer-education-live";
         const googleReviewLink = "https://local.google.com/place?placeid=ChIJu8FW-kRR4DsRNgiy9UB6mEY&utm_medium=noren&utm_source=gbp&utm_campaign=2025";
@@ -88,23 +85,25 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
+        const storage = getStorage(app); // Storage initialized for direct uploads
 
         const { useState, useEffect, useMemo } = React;
 
         const App = () => {
-            const [view, setView] = useState('portfolio'); // 'portfolio' | 'login' | 'admin'
-            const [adminTab, setAdminTab] = useState('leads'); // 'leads' | 'catalog' | 'materials' | 'gallery' | 'links' | 'testimonials'
+            const [view, setView] = useState('portfolio'); 
+            const [adminTab, setAdminTab] = useState('leads'); 
             const [user, setUser] = useState(null);
             
             const [passInput, setPassInput] = useState('');
             const [error, setError] = useState('');
             const [isSaving, setIsSaving] = useState(false);
+            const [isUploading, setIsUploading] = useState(false);
             const [toastMessage, setToastMessage] = useState(null);
             
-            // Native Admission Form State
+            // Admissions Form State
             const [showAdmissionForm, setShowAdmissionForm] = useState(false);
-            const [formData, setFormData] = useState({ name: '', fatherName: '', phone: '', dob: '', school: '', qualification: '', address: '', course: '', reference: '' });
             const [admissions, setAdmissions] = useState([]);
+            const [formData, setFormData] = useState({ name: '', fatherName: '', phone: '', dob: '', school: '', qualification: '', address: '', course: '', reference: '' });
 
             const [links, setLinks] = useState({
                 instagram: "https://www.instagram.com/ntce_1/",
@@ -117,7 +116,6 @@
                 alertMessage: "🚀 Admissions Open for 2026 batches! Learn Web Development, Tally Prime with GST & Graphic Design with Practical Lab Training. 🚀"
             });
 
-            // 10 Extensive Courses
             const [catalog, setCatalog] = useState([
                 { id: "c1", title: "Advanced Full-Stack Web Development", category: "Coding", duration: "6 Months", modules: "HTML5, Tailwind CSS, ReactJS, Node.js, Express, MongoDB, Live Projects", img: "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&q=80&w=800", desc: "Master industry-ready technologies to become a professional software developer.", isBestSeller: true },
                 { id: "c2", title: "Financial Accounting & Tally Prime", category: "Tally", duration: "3 Months", modules: "Company Creation, Ledger Posting, GST Calculation, Payroll Systems, Final Accounts", img: "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=800", desc: "Master balance sheets, dynamic taxation, GST calculations, and standard bookkeeping.", isBestSeller: true },
@@ -156,6 +154,37 @@
                 setTimeout(() => setToastMessage(null), 3500);
             };
 
+            // DIRECT UPLOAD TO FIREBASE STORAGE
+            const handleFileUpload = async (e, folder, callback) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                setIsUploading(true);
+                triggerToast(`Uploading ${file.name}... Please wait.`);
+                
+                try {
+                    const fileRef = ref(storage, `${folder}/${Date.now()}_${file.name}`);
+                    await uploadBytes(fileRef, file);
+                    const downloadURL = await getDownloadURL(fileRef);
+                    callback(downloadURL);
+                    triggerToast(`✅ Upload successful!`);
+                } catch (err) {
+                    console.error("Upload Error:", err);
+                    triggerToast("❌ Upload failed. Please check Firebase Storage rules.");
+                } finally {
+                    setIsUploading(false);
+                }
+            };
+
+            // AUTO-CONVERT GOOGLE DRIVE LINKS FOR PDFS/IMAGES
+            const formatLink = (url) => {
+                if (url.includes('drive.google.com/file/d/')) {
+                    const id = url.split('/file/d/')[1].split('/')[0];
+                    return `https://drive.google.com/uc?export=download&id=${id}`;
+                }
+                return url;
+            };
+
             const categoryPlaceholders = {
                 "Coding": "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&q=80&w=600",
                 "Office": "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=600",
@@ -165,7 +194,6 @@
                 "Other": "https://images.unsplash.com/photo-1488590528505-98d2b5aba04b?auto=format&fit=crop&q=80&w=600"
             };
 
-            // Firebase Initializer
             useEffect(() => {
                 const initAuthAndFirestore = async () => {
                     try {
@@ -175,7 +203,7 @@
                             await signInAnonymously(auth);
                         }
                     } catch (e) {
-                        console.log("Interactive sandbox mode.", e);
+                        console.log("Using local interactive sandbox mode.", e);
                     }
                 };
 
@@ -184,44 +212,42 @@
                 return () => unsubscribeAuth();
             }, []);
 
-            // Firebase Subscriptions
             useEffect(() => {
                 if (!user) return;
 
                 const unsubSettings = onSnapshot(doc(db, 'artifacts', siteAppId, 'public', 'data', 'config', 'settings'), snap => {
                     if (snap.exists()) setLinks(prev => ({ ...prev, ...snap.data(), google_rate: googleReviewLink }));
-                }, err => console.log(err));
+                }, err => console.log("Config fallback used:", err));
 
                 const unsubCatalog = onSnapshot(doc(db, 'artifacts', siteAppId, 'public', 'data', 'catalog', 'products'), snap => {
                     if (snap.exists() && snap.data().items) setCatalog(snap.data().items);
-                }, err => console.log(err));
+                }, err => console.log("Catalog fallback used:", err));
 
                 const unsubGallery = onSnapshot(doc(db, 'artifacts', siteAppId, 'public', 'data', 'config', 'gallery'), snap => {
                     if (snap.exists() && snap.data().photos) setGallery(snap.data().photos);
-                }, err => console.log(err));
+                }, err => console.log("Gallery fallback used:", err));
 
                 const unsubNotes = onSnapshot(doc(db, 'artifacts', siteAppId, 'public', 'data', 'education', 'notes'), snap => {
                     if (snap.exists() && snap.data().list) setNotes(snap.data().list);
-                }, err => console.log(err));
+                }, err => console.log("Notes fallback used:", err));
 
                 const unsubTest = onSnapshot(doc(db, 'artifacts', siteAppId, 'public', 'data', 'feedback', 'userReviews'), snap => {
                     if (snap.exists() && snap.data().list) setTestimonials(snap.data().list);
-                }, err => console.log(err));
+                }, err => console.log("Testimonials fallback used:", err));
 
                 const unsubAdmissions = onSnapshot(doc(db, 'artifacts', siteAppId, 'public', 'data', 'admissions', 'leads'), snap => {
                     if (snap.exists() && snap.data().list) setAdmissions(snap.data().list);
-                }, err => console.log(err));
+                }, err => console.log("Admissions fallback used:", err));
 
                 return () => { unsubSettings(); unsubCatalog(); unsubGallery(); unsubNotes(); unsubTest(); unsubAdmissions(); };
             }, [user]);
 
-            // Database Savers
             const handleSaveSettings = async () => {
-                if (!user) return triggerToast("Not authorized!");
+                if (!user) return triggerToast("Not authorized yet!");
                 setIsSaving(true);
                 try {
                     await setDoc(doc(db, 'artifacts', siteAppId, 'public', 'data', 'config', 'settings'), links, { merge: true });
-                    triggerToast("✨ Settings saved!");
+                    triggerToast("✨ Settings saved to Cloud!");
                 } catch (err) { triggerToast("Saved locally."); } finally { setIsSaving(false); }
             };
 
@@ -319,7 +345,6 @@
                         </div>
                     )}
 
-                    {}
                     {/* MAIN PORTFOLIO VIEW */}
                     {view === 'portfolio' && (
                         <div className="flex-grow pt-[104px] pb-12">
@@ -408,7 +433,6 @@
                                     </div>
                                 </section>
 
-                                {}
                                 {/* 2. Course Catalog */}
                                 <section id="courses" className="scroll-mt-24">
                                     <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4 border-b border-cyan-500/10 pb-6 text-center md:text-left">
@@ -457,7 +481,6 @@
                                     </div>
                                 </section>
 
-                                {}
                                 {/* 3. PDF Notes & Study Materials Panel */}
                                 <section id="materials" className="scroll-mt-24">
                                     <div className="mb-8 border-b border-cyan-500/10 pb-6 text-center md:text-left">
@@ -487,7 +510,6 @@
                                     )}
                                 </section>
 
-                                {}
                                 {/* 4. Photo Gallery */}
                                 <section id="gallery" className="scroll-mt-24">
                                     <div className="mb-8 border-b border-cyan-500/10 pb-6 text-center md:text-left">
@@ -567,7 +589,6 @@
                         </div>
                     )}
 
-
                     {}
                     {/* MODAL: COURSE DETAIL VIEW */}
                     {selectedProduct && (
@@ -620,7 +641,6 @@
                         </div>
                     )}
 
-                    {}
                     {/* MODAL: INTEGRATED ADMISSION FORM */}
                     {showAdmissionForm && (
                         <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 transition-all overflow-y-auto">
@@ -660,7 +680,6 @@
                     )}
 
 
-                    {}
                     {/* ==================================== */}
                     {/* VIEW: ADMIN LOGIN */}
                     {/* ==================================== */}
@@ -681,7 +700,6 @@
                         </div>
                     )}
 
-                    {}
                     {/* ==================================== */}
                     {/* VIEW: ADMIN DASHBOARD */}
                     {/* ==================================== */}
@@ -703,6 +721,7 @@
                                 ))}
                             </div>
 
+                            {}
                             {/* TAB: FORMS & LEADS (NEW ADMISSIONS) */}
                             {adminTab === 'leads' && (
                                 <div className="space-y-4">
@@ -753,13 +772,27 @@
                                                 <div><label className="text-[9px] uppercase font-bold text-white/50 block mb-1">Domain</label><select className="w-full bg-slate-950 text-white rounded-xl p-3 text-xs border border-white/10 outline-none focus:border-cyan-400" value={newItem.category} onChange={(e) => setNewItem({...newItem, category: e.target.value})}><option value="Coding">Coding</option><option value="Tally">Tally</option><option value="Designing">Designing</option><option value="Office">Office</option><option value="Networking">Networking</option></select></div>
                                                 <div><label className="text-[9px] uppercase font-bold text-white/50 block mb-1">Badge</label><select className="w-full bg-slate-950 text-white rounded-xl p-3 text-xs border border-white/10 outline-none focus:border-cyan-400" value={newItem.isBestSeller ? "true" : "false"} onChange={(e) => setNewItem({...newItem, isBestSeller: e.target.value === "true"})}><option value="false">Standard</option><option value="true">Best Choice</option></select></div>
                                             </div>
-                                            <div><label className="text-[9px] uppercase font-bold text-white/50 block mb-1">Image URL (Unsplash)</label><input type="text" className="w-full bg-slate-950 text-white rounded-xl p-3 text-xs border border-white/10 outline-none focus:border-cyan-400" value={newItem.img} onChange={(e) => setNewItem({...newItem, img: e.target.value})} /></div>
+                                            
+                                            <div className="mb-3 p-4 bg-white/5 rounded-xl border border-white/10 border-dashed">
+                                                <label className="text-[10px] uppercase font-bold text-cyan-400 block mb-2">1. Direct Upload (From Device)</label>
+                                                <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, 'courses', (url) => setNewItem({...newItem, img: url}))} className="w-full text-xs text-white/70 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-cyan-500/20 file:text-cyan-300 hover:file:bg-cyan-500/30 mb-3" />
+                                                
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <div className="h-px bg-white/10 flex-grow"></div><span className="text-white/30 text-[9px] uppercase tracking-widest font-bold">OR</span><div className="h-px bg-white/10 flex-grow"></div>
+                                                </div>
+
+                                                <label className="text-[10px] uppercase font-bold text-cyan-400 block mb-2">2. Indirect Link (Paste Image URL)</label>
+                                                <input type="text" placeholder="https://images.unsplash.com/..." className="w-full bg-slate-950 text-white rounded-lg p-2.5 text-xs outline-none border border-white/10 focus:border-cyan-400" value={newItem.img} onChange={(e) => setNewItem({...newItem, img: e.target.value})} />
+                                            </div>
+
                                             <div>
                                                 <label className="text-[9px] uppercase font-bold text-white/50 block mb-1">Key Modules / Syllabus (Comma Separated)</label>
                                                 <input type="text" placeholder="HTML, CSS, React, Node..." className="w-full bg-slate-950 text-white rounded-xl p-3 text-xs border border-white/10 outline-none focus:border-cyan-400" value={newItem.modules} onChange={(e) => setNewItem({...newItem, modules: e.target.value})} />
                                             </div>
                                             <div><label className="text-[9px] uppercase font-bold text-white/50 block mb-1">Description</label><textarea rows="3" className="w-full bg-slate-950 text-white rounded-xl p-3 text-xs border border-white/10 outline-none focus:border-cyan-400" value={newItem.desc} onChange={(e) => setNewItem({...newItem, desc: e.target.value})}></textarea></div>
-                                            <button onClick={addNewProduct} className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs py-3.5 rounded-xl uppercase tracking-wider transition-all shadow-lg">Publish Course</button>
+                                            <button onClick={addNewProduct} disabled={isUploading} className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs py-3.5 rounded-xl uppercase tracking-wider transition-all shadow-lg disabled:opacity-50">
+                                                {isUploading ? "Uploading file..." : "Publish Course"}
+                                            </button>
                                         </div>
                                     </div>
                                     <div className="space-y-3">
@@ -790,9 +823,23 @@
                                         <h3 className="text-sm font-black uppercase tracking-wider text-emerald-400 mb-6">Upload PDF / Study Notes</h3>
                                         <div className="space-y-4">
                                             <div><label className="text-[9px] uppercase font-bold text-white/50 block mb-1">Material Title</label><input type="text" placeholder="e.g. Tally Prime Shortcut Keys" className="w-full bg-slate-950 text-white rounded-xl p-3 text-xs border border-white/10 outline-none focus:border-emerald-400" value={newNote.title} onChange={(e) => setNewNote({...newNote, title: e.target.value})} /></div>
-                                            <div><label className="text-[9px] uppercase font-bold text-white/50 block mb-1">Direct PDF Link (Drive / Dropbox)</label><input type="text" placeholder="https://drive.google.com/..." className="w-full bg-slate-950 text-white rounded-xl p-3 text-xs border border-white/10 outline-none focus:border-emerald-400" value={newNote.link} onChange={(e) => setNewNote({...newNote, link: e.target.value})} /></div>
+                                            
+                                            <div className="p-4 bg-white/5 rounded-xl border border-white/10 border-dashed">
+                                                <label className="text-[10px] uppercase font-bold text-emerald-400 block mb-2">1. Direct Upload (From Device)</label>
+                                                <input type="file" accept="application/pdf" onChange={(e) => handleFileUpload(e, 'pdfs', (url) => setNewNote({...newNote, link: url}))} className="w-full text-xs text-white/70 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-emerald-500/20 file:text-emerald-300 hover:file:bg-emerald-500/30 mb-3" />
+                                                
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <div className="h-px bg-white/10 flex-grow"></div><span className="text-white/30 text-[9px] uppercase tracking-widest font-bold">OR</span><div className="h-px bg-white/10 flex-grow"></div>
+                                                </div>
+
+                                                <label className="text-[10px] uppercase font-bold text-emerald-400 block mb-2">2. Indirect Link (Paste Drive URL)</label>
+                                                <input type="text" placeholder="https://drive.google.com/..." className="w-full bg-slate-950 text-white rounded-lg p-2.5 text-xs outline-none border border-white/10 focus:border-emerald-400" value={newNote.link} onChange={(e) => setNewNote({...newNote, link: formatLink(e.target.value)})} />
+                                            </div>
+
                                             <div><label className="text-[9px] uppercase font-bold text-white/50 block mb-1">Short Description</label><textarea rows="2" placeholder="Describe the topics covered in this PDF..." className="w-full bg-slate-950 text-white rounded-xl p-3 text-xs border border-white/10 outline-none focus:border-emerald-400" value={newNote.desc} onChange={(e) => setNewNote({...newNote, desc: e.target.value})}></textarea></div>
-                                            <button onClick={addNote} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs py-3.5 rounded-xl uppercase tracking-wider transition-all shadow-lg">Publish Notes</button>
+                                            <button onClick={addNote} disabled={isUploading} className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs py-3.5 rounded-xl uppercase tracking-wider transition-all shadow-lg disabled:opacity-50">
+                                                {isUploading ? "Uploading File..." : "Publish Notes"}
+                                            </button>
                                         </div>
                                     </div>
                                     <div className="space-y-3">
@@ -825,9 +872,23 @@
                                     <div className="bg-slate-900/50 p-6 rounded-[32px] border border-cyan-500/20 h-fit">
                                         <h3 className="text-sm font-black uppercase tracking-wider text-cyan-400 mb-6">Upload to Gallery</h3>
                                         <div className="space-y-4">
-                                            <div><label className="text-[9px] uppercase font-bold text-white/50 block mb-1">Image URL (Unsplash or direct link)</label><input type="text" className="w-full bg-slate-950 text-white rounded-xl p-3 text-xs border border-white/10 outline-none focus:border-cyan-400" value={newPhoto.url} onChange={(e) => setNewPhoto({...newPhoto, url: e.target.value})} /></div>
+                                            
+                                            <div className="p-4 bg-white/5 rounded-xl border border-white/10 border-dashed">
+                                                <label className="text-[10px] uppercase font-bold text-cyan-400 block mb-2">1. Direct Upload (From Device)</label>
+                                                <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, 'gallery', (url) => setNewPhoto({...newPhoto, url: url}))} className="w-full text-xs text-white/70 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-cyan-500/20 file:text-cyan-300 hover:file:bg-cyan-500/30 mb-3" />
+                                                
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <div className="h-px bg-white/10 flex-grow"></div><span className="text-white/30 text-[9px] uppercase tracking-widest font-bold">OR</span><div className="h-px bg-white/10 flex-grow"></div>
+                                                </div>
+
+                                                <label className="text-[10px] uppercase font-bold text-cyan-400 block mb-2">2. Indirect Link (Paste Image URL)</label>
+                                                <input type="text" placeholder="Paste image link here..." className="w-full bg-slate-950 text-white rounded-lg p-2.5 text-xs outline-none border border-white/10 focus:border-cyan-400" value={newPhoto.url} onChange={(e) => setNewPhoto({...newPhoto, url: e.target.value})} />
+                                            </div>
+
                                             <div><label className="text-[9px] uppercase font-bold text-white/50 block mb-1">Short Caption</label><input type="text" placeholder="e.g. Students in Lab" className="w-full bg-slate-950 text-white rounded-xl p-3 text-xs border border-white/10 outline-none focus:border-cyan-400" value={newPhoto.caption} onChange={(e) => setNewPhoto({...newPhoto, caption: e.target.value})} /></div>
-                                            <button onClick={addPhoto} className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs py-3.5 rounded-xl uppercase tracking-wider transition-all shadow-lg">Add Photo</button>
+                                            <button onClick={addPhoto} disabled={isUploading} className="w-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs py-3.5 rounded-xl uppercase tracking-wider transition-all shadow-lg disabled:opacity-50">
+                                                {isUploading ? "Uploading Photo..." : "Add Photo"}
+                                            </button>
                                         </div>
                                     </div>
                                     <div className="space-y-3">
@@ -892,7 +953,6 @@
                         </div>
                     )}
 
-                    {}
                     {/* ==================================== */}
                     {/* CUSTOM FOOTER */}
                     {/* ==================================== */}
